@@ -27,6 +27,11 @@ button {
   padding: 12px 18px;
 }
 
+button.secondary-button {
+  background: #253041;
+  margin-top: 18px;
+}
+
 button:disabled {
   cursor: wait;
   opacity: 0.7;
@@ -62,6 +67,12 @@ h1 {
   font-size: 32px;
   line-height: 1.15;
   margin: 0 0 24px;
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 1.2;
+  margin: 4px 0;
 }
 
 .status-row {
@@ -100,4 +111,79 @@ pre {
 .error-message {
   color: #b42318;
   margin: 20px 0 0;
+}
+
+.auth-box {
+  border-top: 1px solid #d9dee8;
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+.auth-box.no-border {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.tabs {
+  background: #eef2f8;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+}
+
+.tabs button {
+  background: transparent;
+  color: #526071;
+}
+
+.tabs button.active {
+  background: #ffffff;
+  color: #155eef;
+}
+
+label {
+  color: #344054;
+  display: grid;
+  font-weight: 700;
+  gap: 6px;
+}
+
+input {
+  border: 1px solid #cfd6e3;
+  border-radius: 8px;
+  color: #18212f;
+  font: inherit;
+  padding: 12px;
+  width: 100%;
+}
+
+input:focus {
+  border-color: #155eef;
+  outline: 3px solid rgba(21, 94, 239, 0.16);
+}
+
+.welcome {
+  color: #12b76a;
+  font-weight: 800;
+  margin: 0;
+}
+
+.helper-text {
+  color: #526071;
+  margin: 18px 0 0;
+}
+
+a {
+  color: #155eef;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
