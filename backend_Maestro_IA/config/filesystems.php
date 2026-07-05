@@ -60,6 +60,17 @@ return [
             'report' => false,
         ],
 
+        'google' => [
+            'driver' => 'google',
+            'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+            'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+            'refresh_token' => env('GOOGLE_DRIVE_REFRESH_TOKEN'),
+            'client_email' => env('GOOGLE_DRIVE_CLIENT_EMAIL'),
+            'private_key' => str_replace('\\n', "\n", (string) env('GOOGLE_DRIVE_PRIVATE_KEY')),
+            'folder_id' => env('GOOGLE_DRIVE_FOLDER_ID'),
+            'throw' => true,
+        ],
+
     ],
 
     /*

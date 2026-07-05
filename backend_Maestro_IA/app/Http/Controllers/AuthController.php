@@ -23,7 +23,7 @@ class AuthController extends Controller
         $token = $user->createToken('frontend')->plainTextToken;
 
         return response()->json([
-            'user' => $user,
+            'user' => $this->userPayload($user),
             'token' => $token,
         ], 201);
     }
@@ -46,7 +46,7 @@ class AuthController extends Controller
         $token = $user->createToken('frontend')->plainTextToken;
 
         return response()->json([
-            'user' => $user,
+            'user' => $this->userPayload($user),
             'token' => $token,
         ]);
     }
@@ -54,7 +54,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => $request->user(),
+            'user' => $this->userPayload($request->user()),
         ]);
     }
 
@@ -65,5 +65,48 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Sesion cerrada correctamente.',
         ]);
+    }
+
+    private function userPayload(User $user): array
+    {
+        $user->load('screens');
+        $screens = $user->screens;
+
+        if ($screens->isEmpty()) {
+            $screens = collect([
+                $user->isAdmin()
+                    ? [
+                        'name' => 'admin_dashboard',
+                        'label' => 'Panel admin',
+                        'route_name' => 'admin.dashboard',
+                        'path' => '/admin',
+                        'icon' => 'layout-dashboard',
+                        'sort_order' => 10,
+                    ]
+                    : [
+                        'name' => 'student_home',
+                        'label' => 'Inicio',
+                        'route_name' => 'student.home',
+                        'path' => '/student/home',
+                        'icon' => 'layout-dashboard',
+                        'sort_order' => 5,
+                    ],
+            ]);
+        }
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'screens' => $screens->map(fn ($screen): array => [
+                'name' => is_array($screen) ? $screen['name'] : $screen->name,
+                'label' => is_array($screen) ? $screen['label'] : $screen->label,
+                'route_name' => is_array($screen) ? $screen['route_name'] : $screen->route_name,
+                'path' => is_array($screen) ? $screen['path'] : $screen->path,
+                'icon' => is_array($screen) ? $screen['icon'] : $screen->icon,
+                'sort_order' => is_array($screen) ? $screen['sort_order'] : $screen->sort_order,
+            ])->values(),
+        ];
     }
 }

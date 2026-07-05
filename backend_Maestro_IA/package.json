@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "serve": "php artisan serve --host=127.0.0.1 --port=8000"
+        "serve": "php -d upload_tmp_dir=C:\\Users\\emili\\AppData\\Local\\MaestroIA\\php-upload-tmp -d upload_max_filesize=20M -d post_max_size=25M -S 127.0.0.1:8000 -t public server.php"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

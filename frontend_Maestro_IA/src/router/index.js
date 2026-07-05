@@ -1,8 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import DashboardView from '../views/DashboardView.vue'
+import AdminAccessView from '../views/AdminAccessView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import StudentDashboardView from '../views/StudentDashboardView.vue'
+import StudentHomeView from '../views/StudentHomeView.vue'
+import StudentTaskDetailView from '../views/StudentTaskDetailView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -10,6 +14,12 @@ export const router = createRouter({
     {
       path: '/',
       redirect: '/dashboard',
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: DashboardView,
+      meta: { requiresAuth: true },
     },
     {
       path: '/login',
@@ -24,10 +34,34 @@ export const router = createRouter({
       meta: { guest: true },
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
+      path: '/admin',
+      name: 'admin.dashboard',
       component: DashboardView,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/access',
+      name: 'admin.access',
+      component: AdminAccessView,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/student/home',
+      name: 'student.home',
+      component: StudentHomeView,
+      meta: { requiresAuth: true, role: 'student' },
+    },
+    {
+      path: '/student',
+      name: 'student.dashboard',
+      component: StudentDashboardView,
+      meta: { requiresAuth: true, role: 'student' },
+    },
+    {
+      path: '/student/tasks/:id',
+      name: 'student.tasks.show',
+      component: StudentTaskDetailView,
+      meta: { requiresAuth: true, role: 'student' },
     },
   ],
 })
@@ -43,8 +77,16 @@ router.beforeEach(async (to) => {
     return { name: 'login' }
   }
 
+  if (to.name === 'dashboard' && auth.isAuthenticated) {
+    return { name: auth.defaultRouteName }
+  }
+
+  if (to.meta.role && auth.user?.role !== to.meta.role) {
+    return { name: auth.defaultRouteName }
+  }
+
   if (to.meta.guest && auth.isAuthenticated) {
-    return { name: 'dashboard' }
+    return { name: auth.defaultRouteName }
   }
 
   return true

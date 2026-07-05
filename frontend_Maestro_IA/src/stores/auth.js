@@ -13,6 +13,15 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state) => Boolean(state.token && state.user),
+    availableScreens: (state) => state.user?.screens || [],
+    defaultRouteName: (state) => {
+      const firstScreen = state.user?.screens?.[0]
+
+      if (firstScreen?.route_name) return firstScreen.route_name
+      if (state.user?.role === 'admin') return 'admin.dashboard'
+
+      return 'student.home'
+    },
   },
 
   actions: {
