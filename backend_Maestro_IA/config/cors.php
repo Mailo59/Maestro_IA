@@ -1,31 +1,13 @@
 <?php
 
-declare(strict_types=1);
-
-$allowedOrigins = array_values(array_filter(array_map(
-    static fn (string $origin): string => trim($origin),
-    explode(',', (string) env('CORS_ALLOWED_ORIGINS', '')),
-)));
-
-if (env('FRONTEND_URL')) {
-    $allowedOrigins[] = rtrim((string) env('FRONTEND_URL'), '/');
-}
-
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
+    // Permitimos explícitamente cualquier método
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => $allowedOrigins !== []
-        ? array_values(array_unique([
-            ...$allowedOrigins,
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-        ]))
-        : [
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-        ],
+    // Cambia el allowed_origins temporalmente a esto para asegurarnos de que acepte el front
+    'allowed_origins' => ['*'],
 
     'allowed_origins_patterns' => [],
 
@@ -35,5 +17,7 @@ return [
 
     'max_age' => 0,
 
+    // ¡ESTA ES LA CLAVE! Cámbialo obligatoriamente a false
+    // Si está en true con allowed_origins en '*', el navegador aborta la petición por seguridad
     'supports_credentials' => false,
 ];
