@@ -344,6 +344,9 @@ class TaskController extends Controller
 
     private function formatInteractionResponse($interaction): array
     {
+        $metadata = is_array($interaction->metadata) ? $interaction->metadata : [];
+        $type = $metadata['type'] ?? $this->inferInteractionType((string) $interaction->prompt);
+
         return [
             'id' => $interaction->id,
             'prompt' => $interaction->prompt,
@@ -351,8 +354,23 @@ class TaskController extends Controller
             'status' => $interaction->status,
             'error_message' => $interaction->error_message,
             'model' => $interaction->model,
+            'type' => $type,
+            'is_student_prompt' => $type === 'follow_up',
             'created_at' => $interaction->created_at?->toISOString(),
         ];
+    }
+
+    private function inferInteractionType(string $prompt): string
+    {
+        if (str_starts_with($prompt, 'Actua como un profesor de primaria')) {
+            return 'initial_analysis';
+        }
+
+        if (str_starts_with($prompt, 'Actua como profesor evaluador')) {
+            return 'grading';
+        }
+
+        return 'follow_up';
     }
 
     private function ensureTaskBelongsToUser(Task $task, int $userId): void

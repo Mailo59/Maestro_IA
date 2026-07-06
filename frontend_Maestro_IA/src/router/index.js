@@ -63,6 +63,11 @@ export const router = createRouter({
       component: StudentTaskDetailView,
       meta: { requiresAuth: true, role: 'student' },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      redirect: '/dashboard',
+    },
   ],
 })
 

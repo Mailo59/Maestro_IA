@@ -44,6 +44,18 @@ Incluye una lista final con las respuestas detectadas.
 Tono: amable, paciente y apropiado para una estudiante de primaria. Explica para que aprenda, no solo para copiar.
 PROMPT;
 
+    private const FOLLOW_UP_SYSTEM_PROMPT = <<<'PROMPT'
+Actua como tutor de primaria en una conversacion continua sobre una tarea escolar.
+
+Reglas:
+- Responde SOLO la nueva pregunta de la estudiante.
+- Usa el historial como contexto, pero no repitas el analisis inicial completo.
+- Si la pregunta cambia de tema, responde esa nueva pregunta y conecta con la tarea cuando sea util.
+- Si la estudiante adjunta un archivo, revisalo como evidencia nueva.
+- Mantén Markdown simple, sin LaTeX, sin simbolos $$ y sin tablas complejas.
+- Explica para que aprenda, no solo para copiar.
+PROMPT;
+
     public function analyzeTaskImageForTask(
         Task $task,
         string $imagePathOrUrl,
@@ -69,6 +81,7 @@ PROMPT;
                 'response_text' => $analysis['text'],
                 'status' => 'completed',
                 'metadata' => [
+                    'type' => 'initial_analysis',
                     'task_title' => $task->title,
                     'due_date' => $task->due_date?->toISOString(),
                     'usage_metadata' => $analysis['usage_metadata'],
@@ -223,6 +236,7 @@ PROMPT;
                 previousInteractions: $previousInteractions->map(fn (AiInteraction $item): array => [
                     'prompt' => $item->prompt,
                     'response_text' => $item->response_text,
+                    'metadata' => $item->metadata ?? [],
                 ])->all(),
             );
 
@@ -231,6 +245,7 @@ PROMPT;
                 'response_text' => $response['text'],
                 'status' => 'completed',
                 'metadata' => [
+                    'type' => 'follow_up',
                     'task_title' => $task->title,
                     'conversation_turn' => $task->aiInteractions()->count(),
                     'usage_metadata' => $response['usage_metadata'],
@@ -314,9 +329,6 @@ PROMPT;
     }
 
     /**
-     * @param array<int, array{prompt: string, response_text: ?string}> $previousInteractions
-     */
-    /**
      * @return array{text: string, usage_metadata: array<string, mixed>, model: string}
      */
     private function generateFollowUpResponse(
@@ -327,14 +339,12 @@ PROMPT;
         array $previousInteractions,
     ): array {
         try {
-            $parts = [
-                [
-                    'text' => $this->buildFollowUpPrompt($task, $studentPrompt, $previousInteractions),
-                ],
-            ];
+            $contents = $this->buildFollowUpContents($task, $studentPrompt, $previousInteractions);
 
             if ($imageSource !== null) {
-                $parts[] = [
+                $lastIndex = array_key_last($contents);
+
+                $contents[$lastIndex]['parts'][] = [
                     'inline_data' => [
                         'mime_type' => $mimeType,
                         'data' => base64_encode($this->getImageBinary($imageSource)),
@@ -342,7 +352,7 @@ PROMPT;
                 ];
             }
 
-            $result = $this->sendGenerateContentWithFallback($parts, 3072);
+            $result = $this->sendConversationContentWithFallback($contents, 3072);
             $payload = $result['payload'];
 
             return [
@@ -367,6 +377,28 @@ PROMPT;
             ]);
 
             throw new RuntimeException('No se pudo continuar la conversacion con Gemini.', previous: $exception);
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $contents
+     * @return array{payload: array<string, mixed>, model: string}
+     */
+    private function sendConversationContentWithFallback(array $contents, int $maxOutputTokens): array
+    {
+        try {
+            return $this->sendConversationContent($contents, $this->getTutorPrincipalModel(), $maxOutputTokens, self::FOLLOW_UP_SYSTEM_PROMPT);
+        } catch (RequestException $exception) {
+            if ($exception->response?->status() !== 429) {
+                throw $exception;
+            }
+
+            Log::warning('Gemini alcanzo limite 429 en conversacion. Usando respaldo.', [
+                'failed_model' => $this->getTutorPrincipalModel(),
+                'fallback_model' => $this->getTutorBackupModel(),
+            ]);
+
+            return $this->sendConversationContent($contents, $this->getTutorBackupModel(), $maxOutputTokens, self::FOLLOW_UP_SYSTEM_PROMPT);
         }
     }
 
@@ -398,6 +430,20 @@ PROMPT;
      */
     private function sendGenerateContent(array $parts, string $model, int $maxOutputTokens): array
     {
+        return $this->sendConversationContent([
+            [
+                'role' => 'user',
+                'parts' => $parts,
+            ],
+        ], $model, $maxOutputTokens, self::SYSTEM_PROMPT);
+    }
+
+    /**
+     * @param array<int, array{role: string, parts: array<int, array<string, mixed>>}> $contents
+     * @return array{payload: array<string, mixed>, model: string}
+     */
+    private function sendConversationContent(array $contents, string $model, int $maxOutputTokens, string $systemPrompt): array
+    {
         $endpoint = sprintf(
             'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent',
             $model,
@@ -412,15 +458,10 @@ PROMPT;
             ->post($endpoint, [
                 'system_instruction' => [
                     'parts' => [
-                        ['text' => self::SYSTEM_PROMPT],
+                        ['text' => $systemPrompt],
                     ],
                 ],
-                'contents' => [
-                    [
-                        'role' => 'user',
-                        'parts' => $parts,
-                    ],
-                ],
+                'contents' => $contents,
                 'generationConfig' => [
                     'temperature' => 0.35,
                     'topP' => 0.9,
@@ -436,36 +477,99 @@ PROMPT;
     }
 
     /**
-     * @param array<int, array{prompt: string, response_text: ?string}> $previousInteractions
+     * @param array<int, array{prompt: string, response_text: ?string, metadata?: array<string, mixed>}> $previousInteractions
+     * @return array<int, array{role: string, parts: array<int, array<string, mixed>>}>
      */
-    private function buildFollowUpPrompt(Task $task, string $studentPrompt, array $previousInteractions): string
+    private function buildFollowUpContents(Task $task, string $studentPrompt, array $previousInteractions): array
     {
-        $history = collect($previousInteractions)
-            ->map(function (array $interaction, int $index): string {
-                $turn = $index + 1;
-                $prompt = trim($interaction['prompt']);
-                $response = trim((string) $interaction['response_text']);
-
-                return "Turno {$turn}\nPregunta o instruccion: {$prompt}\nRespuesta previa: {$response}";
-            })
-            ->implode("\n\n---\n\n");
-
-        return <<<PROMPT
-La estudiante esta retomando una tarea ya analizada.
-
-Datos de la tarea:
+        $contents = [
+            [
+                'role' => 'user',
+                'parts' => [
+                    [
+                        'text' => <<<PROMPT
+Contexto estable de la tarea:
 - Titulo: {$task->title}
 - Descripcion: {$task->description}
+- Fecha limite: {$task->due_date}
 - Estado: {$task->status}
 
-Historial reciente:
-{$history}
+Esta es una conversacion continua. Usa el contexto y el historial para mantener el hilo, pero no vuelvas a imprimir respuestas completas anteriores.
+PROMPT,
+                    ],
+                ],
+            ],
+            [
+                'role' => 'model',
+                'parts' => [
+                    ['text' => 'Entendido. Mantendre el hilo de la tarea y respondere solo la nueva duda.'],
+                ],
+            ],
+        ];
 
-Nueva pregunta de la estudiante:
+        foreach ($previousInteractions as $interaction) {
+            $response = trim((string) ($interaction['response_text'] ?? ''));
+
+            if ($response === '') {
+                continue;
+            }
+
+            $prompt = trim((string) ($interaction['prompt'] ?? ''));
+
+            if (! $this->isTechnicalPrompt($prompt)) {
+                $contents[] = [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $this->limitText($prompt, 1200)],
+                    ],
+                ];
+            } else {
+                $contents[] = [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => 'Analisis inicial de la tarea.'],
+                    ],
+                ];
+            }
+
+            $contents[] = [
+                'role' => 'model',
+                'parts' => [
+                    ['text' => $this->limitText($response, 4500)],
+                ],
+            ];
+        }
+
+        $contents[] = [
+            'role' => 'user',
+            'parts' => [
+                [
+                    'text' => <<<PROMPT
+Nueva pregunta actual de la estudiante:
 {$studentPrompt}
 
-Responde en Markdown simple, breve y claro. Si la estudiante pide una aclaracion, explica con otro ejemplo. Si pide verificar una respuesta, revisa el razonamiento. Evita LaTeX y simbolos raros.
-PROMPT;
+Responde esta nueva pregunta de forma directa y pedagogica. No repitas el analisis inicial completo. Si necesitas mencionar algo previo, hazlo en una frase breve.
+PROMPT,
+                ],
+            ],
+        ];
+
+        return $contents;
+    }
+
+    private function isTechnicalPrompt(string $prompt): bool
+    {
+        return str_starts_with($prompt, 'Actua como un profesor de primaria')
+            || str_starts_with($prompt, 'Actua como profesor evaluador');
+    }
+
+    private function limitText(string $text, int $limit): string
+    {
+        if (mb_strlen($text) <= $limit) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, $limit) . "\n\n[Contenido anterior recortado para mantener el contexto breve.]";
     }
 
     private function buildGradingPrompt(Task $task): string

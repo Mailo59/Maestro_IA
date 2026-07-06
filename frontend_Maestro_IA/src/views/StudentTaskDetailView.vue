@@ -31,6 +31,7 @@ const finishForm = ref({
 const taskId = computed(() => route.params.id)
 const canSend = computed(() => (prompt.value.trim().length > 0 || aiAttachment.value) && !sending.value)
 const canFinish = computed(() => (finishForm.value.text.trim().length > 0 || finishForm.value.file) && !sending.value)
+const chatInteractions = computed(() => [...interactions.value].reverse())
 
 onMounted(async () => {
   await auth.fetchMe()
@@ -138,6 +139,16 @@ function formatDate(value) {
     timeStyle: 'short',
   }).format(new Date(value))
 }
+
+function shouldShowPrompt(interaction) {
+  return interaction.is_student_prompt && interaction.prompt?.trim()
+}
+
+function interactionTitle(interaction) {
+  if (interaction.type === 'initial_analysis') return 'Analisis inicial'
+  if (interaction.type === 'grading') return 'Revision automatica'
+  return 'Respuesta de la IA'
+}
 </script>
 
 <template>
@@ -217,18 +228,42 @@ function formatDate(value) {
           Todavia no hay respuestas guardadas para esta tarea.
         </div>
 
-        <article v-for="interaction in interactions" v-else :key="interaction.id" class="interaction-card">
-          <time class="interaction-date">{{ formatDate(interaction.created_at) }}</time>
+        <div v-else class="chat-thread">
+          <article
+            v-for="interaction in chatInteractions"
+            :key="interaction.id"
+            class="chat-turn"
+          >
+            <div v-if="shouldShowPrompt(interaction)" class="chat-row user-row">
+              <div class="chat-bubble user-bubble">
+                <div class="bubble-meta">
+                  <span>Tu pregunta</span>
+                  <time>{{ formatDate(interaction.created_at) }}</time>
+                </div>
+                <p>{{ interaction.prompt }}</p>
+              </div>
+            </div>
 
-          <AiMarkdown
-            v-if="interaction.response_text"
-            :content="interaction.response_text"
-          />
+            <div class="chat-row ai-row">
+              <div class="ai-avatar">IA</div>
+              <div class="chat-bubble ai-bubble">
+                <div class="bubble-meta">
+                  <span>{{ interactionTitle(interaction) }}</span>
+                  <time>{{ formatDate(interaction.created_at) }}</time>
+                </div>
 
-          <p v-else class="message error">
-            {{ interaction.error_message || 'Esta respuesta no se pudo completar.' }}
-          </p>
-        </article>
+                <AiMarkdown
+                  v-if="interaction.response_text"
+                  :content="interaction.response_text"
+                />
+
+                <p v-else class="message error">
+                  {{ interaction.error_message || 'Esta respuesta no se pudo completar.' }}
+                </p>
+              </div>
+            </div>
+          </article>
+        </div>
 
         <div v-if="pagination.last_page > 1" class="pagination-row">
           <button :disabled="pagination.current_page <= 1 || loading" @click="fetchTask(pagination.current_page - 1)">
@@ -453,17 +488,85 @@ function formatDate(value) {
   justify-content: space-between;
 }
 
-.interaction-card {
-  background: #f8fbff;
-  border: 1px solid #e5edf8;
-  border-radius: 8px;
+.chat-thread {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 18px;
 }
 
-.interaction-date {
-  justify-self: end;
+.chat-turn {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-row {
+  display: flex;
+  gap: 10px;
+}
+
+.user-row {
+  justify-content: flex-end;
+}
+
+.ai-row {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  max-width: min(980px, 100%);
+  padding: 14px;
+}
+
+.user-bubble {
+  background: #155eef;
+  color: #ffffff;
+}
+
+.user-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ai-bubble {
+  background: #f8fbff;
+  border: 1px solid #e5edf8;
+  color: #111827;
+  min-width: min(720px, 100%);
+}
+
+.ai-avatar {
+  align-items: center;
+  background: #eaf2ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #155eef;
+  display: flex;
+  flex: 0 0 38px;
+  font-weight: 900;
+  height: 38px;
+  justify-content: center;
+  margin-top: 4px;
+  width: 38px;
+}
+
+.bubble-meta {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.bubble-meta span {
+  font-weight: 900;
+}
+
+.bubble-meta time {
+  color: inherit;
+  font-size: 13px;
+  opacity: 0.72;
+  text-align: right;
 }
 
 textarea {
